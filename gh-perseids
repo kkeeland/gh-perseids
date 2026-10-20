@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# gh perseids: Perseids (github.com/kkeeland/perseids) as a gh extension.
+# The first run clones Perseids into ~/.perseids (or $PERSEIDS_HOME); after that it updates itself at most once a day.
+set -euo pipefail
+home=${PERSEIDS_HOME:-$HOME/.perseids}
+repo=${PERSEIDS_REPO:-https://github.com/kkeeland/perseids}
+stamp=$home/.git/gh-perseids-updated
+need() { # print how to install anything missing; ruby must be 2.6+
+  local miss=
+  for c in git curl ssh jq ruby; do command -v "$c" >/dev/null || miss="$miss $c"; done
+  command -v ruby >/dev/null && ! ruby -e 'exit(Gem::Version.new(RUBY_VERSION) >= Gem::Version.new("2.6"))' && miss="$miss ruby(2.6+)"
+  [ -z "$miss" ] && return 0
+  echo "gh perseids: missing:$miss" >&2
+  if command -v brew >/dev/null; then echo "  brew install${miss//(2.6+)/}" >&2; else echo "  sudo apt-get install -y${miss//(2.6+)/}" >&2; fi
+  exit 1
+}
+if [ ! -x "$home/bin/perseids" ]; then
+  echo "gh perseids: installing Perseids into $home" >&2
+  git clone -q "$repo" "$home"
+  need
+  touch "$stamp"
+elif [ -z "$(find "$stamp" -mmin -1440 2>/dev/null)" ]; then
+  git -C "$home" pull -q --ff-only 2>/dev/null || true # a failed update never blocks a run
+  touch "$stamp"
+fi
+if [ $# -eq 0 ]; then
+  echo "Next step: gh perseids key   (saves your Boat API key, asked once)" >&2
+  exec "$home/bin/perseids" help
+fi
+exec "$home/bin/perseids" "$@"
